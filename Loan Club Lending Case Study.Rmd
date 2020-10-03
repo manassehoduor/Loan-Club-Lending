@@ -1,0 +1,361 @@
+---
+title: "Loan Club Lending"
+author: "Manasseh"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    number_sections: TRUE
+    theme: sandstone
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+***
+# Introduction:
+***
+Lending club is a leading online marketplace that connects lenders with borrowers for short-term personal loans up to $40,000. They have other offerings as well, but this case study will focus only on personal loans. The company has existed since 2007 and have provided millions of personal loans to individuals. Lending Club announced IPO (Initial Public Offering) in December 2014 since when their business model changed slightly with the company seeming to make risky lending. 
+
+Requirements:
+ 1. Study various aspects of lending using R programming. 
+ 2. Submit findings in a formal report format. 
+ 3. The report must be at least 10 pages long with written description and explanation of your findings to the questions asked below.
+
+#### Data Description: 
+You are given six years of lending data (2012 – 2017) in csv format. The data files are relatively larger than what you have used during this course so far. The size of each file is different and depends upon the number of loans the company issued in a year. It can be noted that the file size are relatively larger 2015 onward, which is when the company went public and started lending more loans. Each file has 31 columns (variables) and the description of each column is provided in the DataDictionary.xls file. 
+
+In addition to that, you are also given the states characteristics in a file called states.csv. This file contains demographic information like population size, median income, unemployment rate etc. 
+Lastly, you are given a regions file called states_regions.csv that contains larger regions and divisions that each state falls in. For example, New Hampshire is in the Northeast region and New England division. 
+
+#### Data CodeBook
+Column Name	                        Description
+
+1.	acc_open_past_24mths	- Number of trades opened in past 24 months.
+
+2.	addr_state	- The state provided by the borrower in the loan application
+
+3.	annual_inc	- The self-reported annual income provided by the borrower during registration.
+
+4.	application_type	Indicates whether the loan is an individual application or a joint application with two co-borrowers
+
+5.	delinq_2yrs	- The number of 30+ days past-due incidences of delinquency in the borrower's credit file for the past 2 years
+
+6.	dti	- A ratio calculated using the borrower’s total monthly debt payments on the total debt obligations, excluding mortgage and the requested LC loan, divided by the borrower’s self-reported monthly income.
+
+7.	emp_length	- Employment length in years. Possible values are between 0 and 10 where 0 means less than one year and 10 means ten or more years. 
+
+8.	emp_title	- The job title supplied by the Borrower when applying for the loan.*
+
+9.	grade	- LC assigned loan grade
+
+10.	home_ownership	- The home ownership status provided by the borrower during registration or obtained from the credit report. Our values are: RENT, OWN, MORTGAGE, OTHER
+
+11.	inq_last_6mths	- The number of inquiries in past 6 months (excluding auto and mortgage inquiries)
+
+12.	int_rate	- Interest Rate on the loan
+
+13.	issue_d	- The month which the loan was funded
+
+14.	last_credit_pull_d	- The most recent month LC pulled credit for this loan
+
+15.	last_pymnt_amnt	- Last total payment amount received
+
+16.	last_pymnt_d	- Last month payment was received
+
+17.	loan_amnt	- The listed amount of the loan applied for by the borrower. If at some point in time, the credit department reduces the loan amount, then it will be reflected in this value.
+
+18.	loan_status	- Current status of the loan
+
+19.	mths_since_last_delinq	- The number of months since the borrower's last delinquency.
+
+20.	open_acc	- The number of open credit lines in the borrower's credit file.
+
+21.	pub_rec_bankruptcies	- Number of public record bankruptcies
+
+22.	purpose	- A category provided by the borrower for the loan request. 
+
+23.	sub_grade	- LC assigned loan subgrade
+
+24.	term	- The number of payments on the loan. Values are in months and can be either 36 or 60.
+
+25.	title	- The loan title provided by the borrower
+
+26.	tot_cur_bal -	Total current balance of all accounts
+
+27.	total_pymnt	- Payments received to date for total amount funded
+
+28.	total_rec_int	- Interest received to date
+
+#### Necessary libraries
+```{r echo = TRUE, warning = FALSE, message = FALSE, results = "hide"}
+library(dplyr)
+library(tidyverse)
+library(magrittr)
+library(ggplot2)
+library(stringr)
+library(lubridate)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(RPostgreSQL)
+library(DBI)
+library(corrplot)
+library(e1071)
+library(xgboost)
+library(tm)
+library(rms)
+library(glmnet)
+library(pROC)
+library(kernlab)
+```
+
+
+# Merging and Cleaning
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+data2012 = read.csv("data2012.csv")
+data2013 = read.csv("data2013.csv")
+data2014 = read.csv("data2014.csv")
+data2015 = read.csv("data2015.csv")
+data2016 = read.csv("data2016.csv")
+data2017 = read.csv("data2017.csv")
+```
+
+Importing all the six Lending Club files in R-working environment.
+
+### Stack and Merge data
+```{r echo = TRUE, warning = FALSE, message = FALSE, results = "TRUE"}
+States = read.csv("States.csv")
+states_regions = read.csv("states_regions.csv")
+Stregion = merge(States, states_regions, by.x = 'Geography', by.y = 'State')
+Combined.Data = rbind(data2012, data2013, data2014, data2015, data2016, data2017)
+Merged.Data = merge(Combined.Data,Stregion, by.x ="addr_state", by.y = "State.Code")
+```
+
+Importing states and states region files in R-working environment. After the importation of the necessary files in R, Stacking procedure was performed whereby, all the six Lending Club files were stacked together on top of each other using rbind() function. The states file was merged with states region file using state name as the primary key. Finally, the merge file was then joined to the combined file so that to have a complete one large file containing lending club and states geographic and demographic information.
+
+# Analysis
+
+Q1)	Find the distribution of number of loans by state, regions and divisions. Describe in your own words the geographic differences in the number of loans are. Also, analyze your results by comparing number of loans per capita. Did you notice any missing states in the Lending Club data? If yes, then find out why. 
+
+Number of Loans by State, Region and Division
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+Q1 = Merged.Data %>%
+  group_by(Geography, Region, Division) %>%
+  summarise(num_loans = n()) %>%
+  arrange(desc(num_loans))
+Q1
+```
+
+California, New York, Texas, and Florida were the states where huge or highest amount of loans were provided while the least amount of loans were provided in North Dakota, Idaho, and Iowa.
+
+Number of Loans and Loans per Capita
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+Q1.1 = Merged.Data %>%
+  group_by(Geography)%>%
+  summarise(num_loans = n(),tot_population = mean(population))%>%
+  mutate(Loans_per_capita = (num_loans/tot_population)*100000) %>%
+ arrange(desc(Loans_per_capita,tot_population))
+Q1.1
+```
+
+Nevada, Connecticut, and New York were the States with the highest loan per capita. In States such as Idaho and Iowa where loan or debt per capita is lower, it implies the risk of default is lower, and the bond quality is higher. Additionally, if the rate of increase in long-term loan debts is higher than the population growth rate among Nevada, Connecticut, and New York States, then the level of debt may rise above the citizens’ ability to pay, assuming that the tax burden is distributed evenly among the citizens.
+The number of loans is indirectly proportional to loans per capita since California which has the maximum number of loans relatively has a lower loan per capita.
+
+Missing States
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+States_missing = anti_join(states_regions, Merged.Data, by = c('State'='addr_state'))
+States_missing
+Merged.Data %>%
+  filter(addr_state == 'PR')
+```
+Puerto Rico State is the missing one. It is missing in the Lending Club data because the State did not offer any personal loans.
+
+
+Q2) Compare the average amount of loans granted by all states and divisions. Which states and divisions have the highest and lowest average loan amounts?
+
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+Compare_Loan = Merged.Data %>%
+  group_by(Geography, Division) %>%
+  summarise(Avg_Amt_Loans = mean(loan_amnt)) %>%
+  arrange(desc(Avg_Amt_Loans))
+
+Compare_Loan
+```
+
+Alaska in Pacific division had the highest average loan amounts followed by Virginia, Massachusetts, New Jersey, and Maryland.
+
+Group by state and division, calculate average amount of loans
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+lower.2 = Merged.Data %>%
+  group_by(Geography, Division) %>%
+  summarise(Avg_Amt_Loans = mean(loan_amnt)) %>%
+  arrange(Avg_Amt_Loans)
+lower.2
+```
+
+Iowa State had the lowest average loan amounts located in the West North Central division.
+
+Group by division, calculate average amount of loans
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+lower.3 = Merged.Data %>%
+  group_by(Division) %>%
+  summarise(Avg_Amt_Loans = mean(loan_amnt)) %>%
+  arrange(Avg_Amt_Loans)
+lower.3
+```
+
+West North Central, East South Central, and Mountain had the lowest average loan amounts.
+
+Q3)	Compare the average interest rate charged and average loan amount by the loan Grade. Do you notice any patterns? 
+
+Creating a new variable
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+Merged.Data = Merged.Data %>%
+  mutate(int_rate = as.numeric(sub("%","", Merged.Data$int_rate))/100)
+```
+
+
+Group by grade, calculate average amount of loans and average interest
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+Q3 = Merged.Data %>%
+  group_by(grade) %>%
+  summarise(Avg_int = mean(int_rate), Avg_loan = mean(loan_amnt)) %>%
+  arrange(grade)
+Q3
+```
+Grade A which is the highest loan category had the lowest average interest rate while grade B had also the lowest loan amount after grade A and the lowest average Interest rate. This imply that a person who has a good credit score and falls under grade A or grade B is assured to access or granted a loan at the lowest interest rate. For borrowers with bad credit score will have to bare with high interest rates.
+
+Q4)	Run a frequency distribution of number of loans, average loan amount and average interest rate for each state by year (2012 through 2017). Describe the changing patterns in those numbers. 
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+Q4 = Merged.Data  %>%
+  group_by(issue_Year) %>%
+  summarise(num_loans=n(), Avg_loan = mean(loan_amnt), Avg_int = mean(int_rate))  %>%
+  arrange(issue_Year)
+Q4
+```
+
+The Interest rate can be observed to be decreasing from the year 2012 to 2016, and rose up again in 2017. The number of loans has also been increasing from 2012 to 2017 except for the year 2016. The average loan amount has been observed to be increasing steadily from the year 2012 to 2017.
+
+
+Q5)	Is there a relationship with the population size of a state and the average loan amount given? Is there a relationship between Grade of loans and median income level in a state?
+
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+Q5.1 = Merged.Data %>%
+  group_by(Geography)%>%
+  summarise(num_loans = n(), Avg_loan = mean(loan_amnt), tot_population = mean(population))%>%
+ arrange(desc(tot_population))
+Q5.1
+```
+It is observed that Population size of a state is directly proportional to the number of loans amount and average loan amount. California and Texas States have the largest population and the highest number of loan amounts and average loan amount. Though, it could be argued that the variability in the average loan amount is very low. There is no significant difference in average loan amount amongst the States.
+
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+Q5.2 = Merged.Data %>%
+  group_by(grade)%>%
+  summarise(median_income = mean(Median_income_Households))%>%
+ arrange(desc(median_income))
+Q5.2
+```
+
+Borrowers who qualify under Grade A and Grade B have a slightly higher median income as compared to the other loan grade score. The highest median income household receives the highest loan grade level. This imply that the average interest rate on these loans are relatively lower than the median income in grade E.
+
+Q6)	This is an open-ended question where you are asked to share an interesting fact that you found through data analysis.
+
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+Q6 = Merged.Data %>%
+  group_by(emp_length)%>%
+  summarise(avg_loan_amount = mean(loan_amnt))%>%
+ arrange(desc(avg_loan_amount))
+Q6
+```
+
+The relationship between average loan amount and employment length show that people with longer employment length have the highest average loan amount. This implies that borrowers who have been employed for longer years stand at a better chance of accessing higher loan amounts.
+
+# Visualization
+
+Q1)	Create a plot of interest rates and Grade or a loan and describe the pattern.
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+Merged.Data %>%
+  group_by(grade)%>%
+  summarise(avg_loan_amnt = mean(loan_amnt))%>%
+ggplot(aes(x = grade, y = avg_loan_amnt)) +
+    geom_bar(stat = "identity") +
+  ylab("Average Loan Amount")
+
+```
+
+The bar plot of average loan amount and grade show that good borrowers have lesser average loan amount and bad borrowers have a higher average loan amount. This is quite interesting as good borrowers should be the ones be having huge loan amount because they have lower risks.
+
+Q2)	Create a map of US states and color code the map with the average amount of loans given. 
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+library(usmap)
+library(ggplot2)
+
+plot_usmap(regions = "counties") + 
+  labs(title = "US Counties",
+       subtitle = "This is a blank map of the counties of the United States.") + 
+  theme(panel.background = element_rect(color = "blue", fill = "lightblue"))
+plot_usmap()
+```
+
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+AverLoanAmt = Merged.Data %>%
+  group_by(Geography)%>%
+  summarise(num_loans = n(), avg_loan_amnt = mean(loan_amnt))
+AverLoanAmt$fips = fips(AverLoanAmt$Geography)
+dplyr::sample_n(AverLoanAmt, 5)
+```
+
+
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+
+plot_usmap(data = AverLoanAmt, values = "avg_loan_amnt", color = "black") + 
+  scale_fill_continuous(
+    low = "white", high = "tomato", name = "Average Loan Amount", label = scales::comma
+  ) + theme(legend.position = "left")
+```
+
+
+Q3)	Show visually the relationship between the annual income of the recipient and the loan amount obtained from Lending Club.
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+ggplot(data = Merged.Data) + 
+  geom_point(mapping = aes(x = annual_inc, y = loan_amnt))
+```
+
+
+Q4)	Create a plot that shows the relationship between the length of employment and amount of loan obtained. 
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+Merged.Data %>%
+  group_by(emp_length)%>%
+  summarise(avg_loan_amnt = mean(loan_amnt))%>%
+ggplot(aes(x = emp_length, y = avg_loan_amnt)) +
+    geom_bar(stat = "identity")
+
+```
+
+
+Q5)	Create a “regional” map and show an interesting relationship of your liking. 
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+plot_usmap(include = c("CA", "ID", "NV", "OR", "WA")) +
+  labs(title = "Western US States",
+       subtitle = "These are the states in the Pacific Timezone.")
+```
+
+
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+plot_usmap(
+    data = AverLoanAmt, values = "num_loans", include = c("CA", "ID", "NV", "OR", "WA"), color = "black"
+  ) + 
+  scale_fill_continuous(
+    low = "white", high = "blue", name = "Number of Loans", label = scales::comma
+  ) + 
+  labs(title = "Western US States", subtitle = "These are the states in the Pacific Timezone.") +
+  theme(legend.position = "right")
+```
+
+
